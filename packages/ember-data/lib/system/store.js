@@ -7,6 +7,10 @@
 
 import normalizeModelName from "ember-data/system/normalize-model-name";
 import {
+  modelFor,
+  modelFactoryFor
+} from 'ember-data/system/store/factory-locators';
+import {
   InvalidError,
   Adapter
 } from "ember-data/system/adapter";
@@ -1428,39 +1432,6 @@ Store = Service.extend({
     return record;
   },
 
-  /*
-    In case someone defined a relationship to a mixin, for example:
-    ```
-      var Comment = DS.Model.extend({
-        owner: belongsTo('commentable'. { polymorphic: true})
-      });
-      var Commentable = Ember.Mixin.create({
-        comments: hasMany('comment')
-      });
-    ```
-    we want to look up a Commentable class which has all the necessary
-    relationship metadata. Thus, we look up the mixin and create a mock
-    DS.Model, so we can access the relationship CPs of the mixin (`comments`)
-    in this case
-  */
-
-  _modelForMixin: function(modelName) {
-    var normalizedModelName = normalizeModelName(modelName);
-    var registry = this.container._registry ? this.container._registry : this.container;
-    var mixin = registry.resolve('mixin:' + normalizedModelName);
-    if (mixin) {
-      //Cache the class as a model
-      registry.register('model:' + normalizedModelName, DS.Model.extend(mixin));
-    }
-    var factory = this.modelFactoryFor(normalizedModelName);
-    if (factory) {
-      factory.__isMixin = true;
-      factory.__mixin = mixin;
-    }
-
-    return factory;
-  },
-
   /**
     Returns a model class for a particular key. Used by
     methods that take a type key (like `find`, `createRecord`,
@@ -1472,39 +1443,12 @@ Store = Service.extend({
   */
   modelFor: function(modelName) {
     Ember.assert('Passing classes to store methods has been removed. Please pass a dasherized string instead of '+ Ember.inspect(modelName), typeof modelName === 'string');
-
-    var factory = this.modelFactoryFor(modelName);
-    if (!factory) {
-      //Support looking up mixins as base types for polymorphic relationships
-      factory = this._modelForMixin(modelName);
-    }
-    if (!factory) {
-      throw new Ember.Error("No model was found for '" + modelName + "'");
-    }
-    factory.modelName = factory.modelName || normalizeModelName(modelName);
-
-    // deprecate typeKey
-    if (!('typeKey' in factory)) {
-      Ember.defineProperty(factory, 'typeKey', {
-        enumerable: true,
-        configurable: false,
-        get: function() {
-          Ember.deprecate('Usage of `typeKey` has been deprecated and will be removed in Ember Data 1.0. It has been replaced by `modelName` on the model class.');
-          return Ember.String.camelize(this.modelName);
-        },
-        set: function() {
-          Ember.assert('Setting typeKey is not supported. In addition, typeKey has also been deprecated in favor of modelName. Setting modelName is also not supported.');
-        }
-      });
-    }
-
-    return factory;
+    return modelFor(this.container, modelName);
   },
 
   modelFactoryFor: function(modelName) {
     Ember.assert('Passing classes to store methods has been removed. Please pass a dasherized string instead of '+ Ember.inspect(modelName), typeof modelName === 'string');
-    var normalizedKey = normalizeModelName(modelName);
-    return this.container.lookupFactory('model:' + normalizedKey);
+    return modelFactoryFor(this.container, modelName);
   },
 
   /**
